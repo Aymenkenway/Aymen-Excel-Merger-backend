@@ -547,7 +547,12 @@ const path = require('path')
 const app = express()
 
 // Middleware
-app.use(cors())
+//app.use(cors())
+app.use(
+  cors({
+    origin: 'https://aymen-excel-merger-backend.vercel.app/merge', // Replace with your frontend URL
+  })
+)
 app.use(express.json())
 
 // Set up multer to store files in Vercel's /tmp directory
