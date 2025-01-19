@@ -401,7 +401,7 @@
 //   console.log(`Server running on http://localhost:${port}`)
 // })
 
-// server.js
+// server.js (backend code)
 const express = require('express')
 const multer = require('multer')
 const xlsx = require('xlsx')
@@ -413,7 +413,8 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-const upload = multer({ dest: 'uploads/' })
+// Use the /tmp directory on Vercel for file uploads
+const upload = multer({ dest: '/tmp/uploads/' })
 
 app.post('/merge', upload.array('files'), (req, res) => {
   const files = req.files
@@ -459,5 +460,4 @@ app.post('/merge', upload.array('files'), (req, res) => {
   }
 })
 
-// Export the Express app as a Vercel serverless function
 module.exports = app
