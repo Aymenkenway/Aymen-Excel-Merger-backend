@@ -8,6 +8,10 @@
   ],
   "routes": [
     {
+      "src": "/merge",
+      "dest": "/server.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/server.js"
     }
