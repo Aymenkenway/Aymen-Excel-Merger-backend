@@ -1,7 +1,10 @@
 const express = require('express')
 const multer = require('multer')
 const xlsx = require('xlsx')
+const fs = require('fs')
+const path = require('path')
 const cors = require('cors')
+const stream = require('stream')
 
 const app = express()
 const port = 5000
@@ -23,6 +26,17 @@ function columnToIndex(col) {
   return index - 1 // Adjust for zero-based index
 }
 
+// Helper to create the merged file stream
+function createMergedStream(mergedData) {
+  const readable = new stream.Readable()
+  readable._read = () => {} // No-op
+  mergedData.forEach((row) => {
+    readable.push(JSON.stringify(row) + '\n')
+  })
+  readable.push(null) // End the stream
+  return readable
+}
+
 // Endpoint to handle file upload and merging
 app.post('/merge', upload.array('files'), (req, res) => {
   const files = req.files
@@ -34,6 +48,10 @@ app.post('/merge', upload.array('files'), (req, res) => {
 
   try {
     const mergedData = []
+    const tempFilePath = path.join(__dirname, 'merged_temp.xlsx')
+
+    // Open a write stream for the final merged data
+    const writeStream = fs.createWriteStream(tempFilePath)
 
     files.forEach((file) => {
       const workbook = xlsx.read(file.buffer)
@@ -46,44 +64,41 @@ app.post('/merge', upload.array('files'), (req, res) => {
       const startCol = rowConfig.startColumn || 'A'
       const endCol = rowConfig.endColumn || 'Z'
 
-      console.log(startRow, endRow, startCol, endCol)
       // Convert columns to indices
       const startColIndex = columnToIndex(startCol)
       const endColIndex = columnToIndex(endCol)
 
-      // Loop over the rows
+      // Loop over the specified row range and column range
       for (let i = startRow - 1; i < endRow; i++) {
-        const row = data[i]
-
-        // Slice the row based on column range
-        const slicedRow = row ? row.slice(startColIndex, endColIndex + 1) : []
+        const row = data[i]?.slice(startColIndex, endColIndex + 1) // Slice by columns
 
         // Filter out empty rows
         if (
-          slicedRow.some(
-            (cell) => cell !== undefined && cell !== null && cell !== ''
-          )
+          row &&
+          row.some((cell) => cell !== undefined && cell !== null && cell !== '')
         ) {
-          mergedData.push(slicedRow)
+          mergedData.push(row)
         }
       }
     })
 
-    // Create a new workbook and sheet for merged data
-    const newWorkbook = xlsx.utils.book_new()
-    const newSheet = xlsx.utils.aoa_to_sheet(mergedData)
-    xlsx.utils.book_append_sheet(newWorkbook, newSheet, 'MergedSheet')
+    // Create a readable stream from mergedData
+    const mergedStream = createMergedStream(mergedData)
 
-    // Set a memory buffer for the merged file
-    const buffer = xlsx.write(newWorkbook, { bookType: 'xlsx', type: 'buffer' })
+    // Pipe the merged data to the write stream
+    mergedStream.pipe(writeStream)
 
-    // Send the file buffer as response
-    res.setHeader('Content-Disposition', 'attachment; filename=merged.xlsx')
-    res.setHeader(
-      'Content-Type',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
-    res.send(buffer)
+    // Once writing is done, send the result
+    writeStream.on('finish', () => {
+      res.setHeader('Content-Disposition', 'attachment; filename=merged.xlsx')
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+
+      // Read the merged file and send it as a response
+      fs.createReadStream(tempFilePath).pipe(res)
+    })
   } catch (error) {
     console.error(error)
     return res
